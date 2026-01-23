@@ -1,0 +1,5 @@
+{
+  "name": "KLang Compiler Playground",
+  "description": "A web-based compiler and runtime environment for the KLang 3D world development language.",
+  "requestFramePermissions": []
+}
