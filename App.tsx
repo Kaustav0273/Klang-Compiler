@@ -133,7 +133,15 @@ export default function App() {
     else if (isResizing.current === 'preview') {
        const containerWidth = containerRef.current?.clientWidth || window.innerWidth;
        const newWidth = containerWidth - e.clientX;
-       if (newWidth > 200 && newWidth < containerWidth - 300) setPreviewWidth(newWidth);
+       
+       // Improved constraint logic to prevent overflow
+       const activityBarWidth = 48;
+       const minEditorWidth = 200;
+       const maxPreviewWidth = containerWidth - activityBarWidth - sidebarWidth - minEditorWidth;
+       
+       if (newWidth > 200 && newWidth < maxPreviewWidth) {
+           setPreviewWidth(newWidth);
+       }
     }
     else if (isResizing.current === 'console') {
        const containerHeight = containerRef.current?.clientHeight || window.innerHeight;

@@ -285,18 +285,26 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     };
     animate();
 
+    // Use ResizeObserver to detect container size changes
     const handleResize = () => {
        if (!mountRef.current) return;
        const w = mountRef.current.clientWidth;
        const h = mountRef.current.clientHeight;
+       if (w === 0 || h === 0) return;
+
        camera.aspect = w / h;
        camera.updateProjectionMatrix();
        renderer.setSize(w, h);
     };
-    window.addEventListener('resize', handleResize);
+
+    const resizeObserver = new ResizeObserver(() => handleResize());
+    resizeObserver.observe(mountRef.current);
+    
+    // Initial resize
+    handleResize();
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       cancelAnimationFrame(frameId);
       pmremGenerator.dispose();
       if (mountRef.current) {
@@ -305,5 +313,5 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     };
   }, [data]);
 
-  return <div ref={mountRef} className="w-full h-full bg-gray-900" />;
+  return <div ref={mountRef} className="w-full h-full bg-gray-900 overflow-hidden" />;
 };
