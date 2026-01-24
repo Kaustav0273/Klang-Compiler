@@ -3,13 +3,13 @@ export const INITIAL_CODE = `// KLang Roughness Example
 
 // Material with high roughness (matte, like concrete)
 mat_concrete = material { 
-  color = 0x888888 
+  color = red 
   roughness = 1.0 
 }
 
 // Material with low roughness (shiny, like plastic/metal)
 mat_shiny = material { 
-  color = 0x2266AA 
+  color = blue 
   roughness = 0.0 
 }
 
