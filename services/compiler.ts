@@ -22,8 +22,6 @@ export async function compile(
   const imports = ast.statements.filter(s => s.type === 'Import') as ImportStatement[];
   
   for (const imp of imports) {
-    const alias = imp.alias || imp.source; // Use source as alias if no alias
-    
     let modSource = "";
     
     if (imp.source.startsWith('http')) {
@@ -42,35 +40,53 @@ export async function compile(
            modSource = `console.print("Failed to load ${imp.source}")`;
          }
        }
-    } else if (imp.source.startsWith('local@')) {
-       // Local Import: local@houses -> look for 'local/houses.klang' or just 'houses' in keys
-       const pathKey = imp.source.replace('local@', '') + '.klang';
-       // Try 'local/houses.klang' then 'houses.klang'
-       const lookup1 = `local/${imp.source.replace('local@', '')}.klang`;
-       const lookup2 = imp.source.replace('local@', '') + '.klang';
+    } else {
+       // Local Import
+       // normalize source: remove local@ prefix if present
+       const cleanName = imp.source.replace('local@', '');
+       const possiblePaths = [
+         imp.source, // raw
+         `${cleanName}.klang`, // clean + extension
+         `local/${cleanName}.klang` // local folder
+       ];
        
-       if (fileSystem[lookup1]) {
-          modSource = fileSystem[lookup1];
-       } else if (fileSystem[lookup2]) {
-          modSource = fileSystem[lookup2];
-       } else {
-          // Check for exact match in keys just in case
-          if (fileSystem[imp.source]) modSource = fileSystem[imp.source];
+       for (const p of possiblePaths) {
+          if (fileSystem[p]) {
+             modSource = fileSystem[p];
+             break;
+          }
        }
     }
     
     if (modSource) {
-      // Recursive compilation
-      // We ignore the sceneGraph of modules, we only care about their 'scope' (variables exported)
-      // Note: Our interpreter returns 'scope' in the extended result.
+      // Recursive compilation to get module exports
       const modResult = await compile(modSource, fileSystem, imp.source);
+      const modScope = (modResult as any).scope || {};
       
-      // We expose the entire scope of the module as an object
-      // If `from` syntax is used: import { x } from ... (not supported in AST yet really, simpler import)
-      // The AST has `items`.
-      
-      const modScope = (modResult as any).scope;
-      modules[alias] = modScope;
+      // Determine what to put in 'modules' map (which becomes the scope)
+      if (imp.items && imp.items.length > 0) {
+         // Case: import x, y from ...
+         
+         if (imp.alias && imp.items.length === 1) {
+            // Case: import x from lib as y
+            const itemName = imp.items[0];
+            if (modScope[itemName] !== undefined) {
+               modules[imp.alias] = modScope[itemName];
+            }
+         } else {
+            // Case: import x, y from lib
+            // No alias support for multiple imports in this version of KLang (as per prompt implication)
+            imp.items.forEach(itemName => {
+               if (modScope[itemName] !== undefined) {
+                  modules[itemName] = modScope[itemName];
+               }
+            });
+         }
+      } else {
+         // Case: import lib as m  OR  import lib
+         const key = imp.alias || imp.source;
+         modules[key] = modScope;
+      }
     }
   }
   

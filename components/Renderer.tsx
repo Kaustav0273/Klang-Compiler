@@ -23,7 +23,6 @@ const createNoiseTexture = () => {
       const data = imageData.data;
       
       // Simple Perlin-ish noise approximation or just white noise
-      // White noise is enough for "rough concrete/rock" bumps at high frequency
       for (let i = 0; i < data.length; i += 4) {
           const val = Math.random() * 255;
           data[i] = val;
@@ -97,7 +96,7 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
     dirLight.position.set(10, 20, 10);
     dirLight.castShadow = true;
-    dirLight.shadow.bias = -0.0005; // Tuned for self-shadowing
+    dirLight.shadow.bias = -0.0005; 
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
     scene.add(dirLight);
@@ -123,11 +122,8 @@ export const Renderer: React.FC<Props> = ({ data }) => {
         side: THREE.DoubleSide
       });
 
-      // Apply procedural rocky texture if roughness is present
       if (roughness > 0 && noiseTex.current) {
           mat.bumpMap = noiseTex.current;
-          // Scale the bump effect by the roughness value
-          // Higher roughness = rockier/bumpier
           mat.bumpScale = roughness * 0.15; 
       }
 
@@ -136,8 +132,15 @@ export const Renderer: React.FC<Props> = ({ data }) => {
 
     const createMeshResources = (obj: any) => {
        if (obj.shape === 'pyramid') {
-          const geom = new THREE.ConeGeometry(1, 1.5, 4);
-          const mat = createThreeMaterial(obj.props);
+          const height = obj.height || 1.5;
+          const geom = new THREE.ConeGeometry(1, height, 4);
+          
+          if (obj.direction === 'down') geom.rotateX(Math.PI);
+          else if (obj.direction === 'x') geom.rotateZ(-Math.PI/2);
+          else if (obj.direction === 'z') geom.rotateX(Math.PI/2);
+          // Default up (y) requires no rotation
+
+          const mat = createThreeMaterial(obj.material || obj.props);
           return { geometry: geom, materials: [mat] };
        }
 
@@ -179,7 +182,6 @@ export const Renderer: React.FC<Props> = ({ data }) => {
              const indices = trianglesByMaterial[matIdx];
              const start = indexOffset / 3;
              
-             // Process triangles (groups of 3 indices) to compute flat normals for UV mapping
              for (let i = 0; i < indices.length; i += 3) {
                 const i0 = indices[i];
                 const i1 = indices[i+1];
@@ -189,7 +191,6 @@ export const Renderer: React.FC<Props> = ({ data }) => {
                 const v1 = obj.vertices[i1] || {x:0,y:0,z:0};
                 const v2 = obj.vertices[i2] || {x:0,y:0,z:0};
 
-                // Compute Triangle Normal
                 const p0 = new THREE.Vector3(v0.x, v0.y, v0.z);
                 const p1 = new THREE.Vector3(v1.x, v1.y, v1.z);
                 const p2 = new THREE.Vector3(v2.x, v2.y, v2.z);
@@ -198,16 +199,14 @@ export const Renderer: React.FC<Props> = ({ data }) => {
                 const ab = new THREE.Vector3().subVectors(p0, p1);
                 const normal = new THREE.Vector3().crossVectors(cb, ab).normalize();
 
-                // Generate UVs using Box Mapping (Planar Projection)
                 const generateUV = (p: THREE.Vector3, n: THREE.Vector3) => {
-                   // Avoid strict 0 checks for axis dominance to handle slight angles
                    const nx = Math.abs(n.x);
                    const ny = Math.abs(n.y);
                    const nz = Math.abs(n.z);
 
-                   if (nx > ny && nx > nz) return { x: p.z, y: p.y }; // X-dominant -> ZY plane
-                   if (ny > nx && ny > nz) return { x: p.x, y: p.z }; // Y-dominant -> XZ plane
-                   return { x: p.x, y: p.y };                         // Z-dominant -> XY plane
+                   if (nx > ny && nx > nz) return { x: p.z, y: p.y }; 
+                   if (ny > nx && ny > nz) return { x: p.x, y: p.z }; 
+                   return { x: p.x, y: p.y };                         
                 };
 
                 const uv0 = generateUV(p0, normal);
@@ -276,7 +275,6 @@ export const Renderer: React.FC<Props> = ({ data }) => {
       }
     });
 
-    // Animation Loop
     let frameId: number;
     const animate = () => {
       frameId = requestAnimationFrame(animate);
@@ -285,7 +283,6 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     };
     animate();
 
-    // Use ResizeObserver to detect container size changes
     const handleResize = () => {
        if (!mountRef.current) return;
        const w = mountRef.current.clientWidth;
@@ -300,7 +297,6 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     const resizeObserver = new ResizeObserver(() => handleResize());
     resizeObserver.observe(mountRef.current);
     
-    // Initial resize
     handleResize();
 
     return () => {

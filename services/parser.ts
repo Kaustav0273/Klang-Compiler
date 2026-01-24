@@ -74,14 +74,41 @@ export function parse(tokens: Token[]): ProgramNode {
     let items: string[] | null = null;
     let source = '';
     
-    const first = expect(TokenType.IDENTIFIER);
+    const t = peek();
     
-    if (peek().value === 'from') {
-      items = [first.value];
-      advance(); // consume 'from'
-      source = expect(TokenType.IDENTIFIER).value;
+    // Case 1: import "http://..." (Direct string source)
+    if (t.type === TokenType.STRING) {
+      source = advance().value;
     } else {
-      source = first.value;
+      // Case 2: import x, y from ... OR import libName
+      const ids: string[] = [];
+      ids.push(expect(TokenType.IDENTIFIER).value);
+      
+      // Parse optional comma-separated list
+      while (peek().value === ',') {
+        advance(); // consume comma
+        ids.push(expect(TokenType.IDENTIFIER).value);
+      }
+
+      if (peek().value === 'from') {
+         advance(); // consume 'from'
+         items = ids;
+         
+         const srcToken = peek();
+         if (srcToken.type === TokenType.STRING) {
+            source = advance().value;
+         } else {
+            source = expect(TokenType.IDENTIFIER).value;
+         }
+      } else {
+         // No 'from', implies `import libName`
+         if (ids.length === 1) {
+            source = ids[0];
+            items = null;
+         } else {
+            throw new Error(`Syntax Error: Expected 'from' after import list at line ${t.line}`);
+         }
+      }
     }
 
     let alias: string | null = null;
@@ -168,14 +195,12 @@ export function parse(tokens: Token[]): ProgramNode {
     let vertices: {x:number, y:number, z:number}[] = [];
     let faces: MeshFace[] = [];
 
-    // Parse loop for mesh body properties
     while (peek().value !== '}') {
       const key = expect(TokenType.IDENTIFIER).value;
       expect(TokenType.SYMBOL, '=');
       expect(TokenType.SYMBOL, '[');
 
       if (key === 'vertices') {
-        // Parse vertex list: x,y,z; x,y,z; ...
         while (peek().value !== ']') {
           const x = parseFloat(expect(TokenType.NUMBER).value);
           expect(TokenType.SYMBOL, ',');
@@ -187,36 +212,26 @@ export function parse(tokens: Token[]): ProgramNode {
           vertices.push({ x, y, z });
         }
       } else if (key === 'faces') {
-        // Parse face list: index_list : material_ref;
-        // Example: 0,1,2,3 : m.roof;
         while (peek().value !== ']') {
           const indices: number[] = [];
           
-          // Parse indices
           while (true) {
             indices.push(parseInt(expect(TokenType.NUMBER).value));
-            
             const next = peek();
             if (next.value === ',') {
-              advance(); // Consume comma
+              advance();
               if (peek().type !== TokenType.NUMBER) {
-                // Ensure comma is only used between numbers
                 throw new Error(`Syntax Error: Expected number after comma in face indices at line ${peek().line}`);
               }
             } else {
-              // Not a comma, so end of index list
               break;
             }
           }
           
           let materialRef: any = undefined;
-          
-          // Check for material separator (Colon)
           if (peek().value === ':') {
-             advance(); // consume :
-             
+             advance(); 
              const refName = expect(TokenType.IDENTIFIER).value;
-             // Check for dot notation: klang-material.roof
              if (peek().value === '.') {
                 advance();
                 const subRef = expect(TokenType.IDENTIFIER).value;
@@ -271,18 +286,33 @@ export function parse(tokens: Token[]): ProgramNode {
   function parseKeyValueBlock(): Record<string, any> {
     const props: Record<string, any> = {};
     while (peek().value !== '}') {
-      const key = expect(TokenType.IDENTIFIER).value;
+      // 1. Parse Keys
+      const keys: string[] = [];
+      keys.push(expect(TokenType.IDENTIFIER).value);
+      while (peek().value === ',') {
+        advance();
+        keys.push(expect(TokenType.IDENTIFIER).value);
+      }
+
       expect(TokenType.SYMBOL, '=');
       
-      const valToken = peek();
-      if (valToken.type === TokenType.STRING) {
-        props[key] = advance().value;
-      } else if (valToken.type === TokenType.NUMBER) {
-        props[key] = parseFloat(advance().value);
-      } else if (valToken.type === TokenType.IDENTIFIER) {
-         props[key] = advance().value;
+      // 2. Parse Values (Expressions)
+      const values: ExpressionNode[] = [];
+      values.push(parseExpression());
+      while (peek().value === ',') {
+        advance();
+        values.push(parseExpression());
+      }
+      
+      // 3. Map Keys to Values
+      if (keys.length === values.length) {
+         keys.forEach((k, i) => {
+            props[k] = values[i];
+         });
+      } else if (keys.length === 1) {
+         props[keys[0]] = values;
       } else {
-         throw new Error(`Invalid value in block at line ${valToken.line}`);
+         throw new Error(`Count mismatch in assignment: ${keys.length} keys vs ${values.length} values at line ${peek().line}`);
       }
     }
     return props;
@@ -326,6 +356,8 @@ export function parse(tokens: Token[]): ProgramNode {
          val = coords;
       }
       else {
+        // Fallback for simple values, though parseExpression would be better here too in a full rewrite
+        // Keeping legacy logic for Action property assignment to minimize drift from prompt
         if (t1.type === TokenType.STRING || t1.type === TokenType.NUMBER) {
              val = t1.type === TokenType.NUMBER ? parseFloat(advance().value) : advance().value;
         } else if (t1.type === TokenType.IDENTIFIER) {

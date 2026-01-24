@@ -12,14 +12,39 @@ function parseVector(str: string): Vec3 {
   return { x: parts[0] || 0, y: parts[1] || 0, z: parts[2] || 0 };
 }
 
-// Added modules parameter
 export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): CompilerResult {
   const sceneGraph: Record<string, any> = {};
   const logs: string[] = [];
   const errors: string[] = [];
-  const scope: Record<string, any> = {}; // Variables
   
-  // Initialize scope with modules
+  // Initialize scope with built-in constants
+  const scope: Record<string, any> = {
+    // Math
+    PI: Math.PI,
+    
+    // Colors (Hex)
+    red: 0xff0000,
+    green: 0x00ff00,
+    blue: 0x0000ff,
+    white: 0xffffff,
+    black: 0x000000,
+    gray: 0x808080,
+    yellow: 0xffff00,
+    cyan: 0x00ffff,
+    magenta: 0xff00ff,
+    
+    // Directions / Axes (Strings)
+    x: 'x',
+    y: 'y',
+    z: 'z',
+    up: 'up',
+    down: 'down',
+    left: 'left',
+    right: 'right',
+    forward: 'forward',
+    back: 'back'
+  }; 
+  
   Object.keys(modules).forEach(alias => {
     scope[alias] = modules[alias];
   });
@@ -38,31 +63,29 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
      }
      return null;
   }
+  
+  function evaluateProperties(props: Record<string, any>): Record<string, any> {
+    const result: Record<string, any> = {};
+    for (const [key, val] of Object.entries(props)) {
+        if (Array.isArray(val)) {
+             result[key] = val.map(v => evaluateExpression(v));
+        } else {
+             result[key] = evaluateExpression(val as ExpressionNode);
+        }
+    }
+    return result;
+  }
 
   function evaluateExpression(expr: ExpressionNode): any {
     switch (expr.type) {
       case 'CubeExpr': {
-        // Compiler Rule: cube() expands into mesh {}
-        // Input vertices: 8 strings "x,y,z"
         const verts = expr.vertices.map(v => parseVector(v));
         
-        // Safety check
         if (verts.length !== 8) {
            errors.push("Runtime Error: cube() requires exactly 8 vertices.");
            return null;
         }
 
-        // Define faces (indices)
-        // Order assumption based on prompt: 0,1,2,3...
-        // Face 0 (Bottom): 0,1,2,3
-        // Face 1 (Top): 4,5,6,7
-        // etc. standard box winding. 
-        // We'll use the prompt's implied logic of standard mapping if explicit topology isn't provided.
-        // Let's create a solid closed cube.
-        // Assuming:
-        // 0-3: Base, 4-7: Top
-        // 0(FL), 1(FR), 2(BR), 3(BL) (Clockwise or CCW?)
-        // Standard OBJ-like mapping
         const faces = [
             { indices: [0, 1, 2, 3] }, // Bottom
             { indices: [4, 5, 6, 7] }, // Top
@@ -74,7 +97,7 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
 
         return { 
           type: 'geometry', 
-          shape: 'mesh', // INTERNALLY IT IS A MESH
+          shape: 'mesh', 
           vertices: verts,
           faces: faces,
           pos: {x:0, y:0, z:0},
@@ -85,7 +108,6 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
       }
       
       case 'MeshExpr': {
-         // Resolve materials in faces immediately
          const resolvedFaces = expr.faces.map(f => {
             let mat = null;
             if (f.materialRef) {
@@ -111,26 +133,54 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
       }
 
       case 'MaterialExpr':
-        return { type: 'material', ...expr.properties };
+        return { type: 'material', ...evaluateProperties(expr.properties) };
         
-      case 'ModifierExpr':
-        const resolvedProps: any = {};
-        for(const [k, v] of Object.entries(expr.properties)) {
-          if (typeof v === 'string' && scope[v]) {
-             resolvedProps[k] = scope[v]; 
-          } else {
-             resolvedProps[k] = v;
-          }
+      case 'ModifierExpr': {
+        const props = evaluateProperties(expr.properties);
+        const base = props.base;
+        
+        if (!base) {
+           errors.push("Runtime Error: Modifier requires a 'base' property.");
+           return null;
         }
-        return { 
-          type: 'geometry', 
-          shape: 'pyramid', // This is likely a placeholder for now
-          props: resolvedProps,
-          pos: {x:0, y:0, z:0},
-          rot: {x:0, y:0, z:0},
-          scale: {x:1, y:1, z:1},
-          parent: null
-        };
+        
+        // Deep clone the base object to apply modifications
+        const newObj = JSON.parse(JSON.stringify(base));
+        
+        if (expr.modifierType === 'pyramid') {
+           newObj.shape = 'pyramid';
+           newObj.height = props.height !== undefined ? props.height : 1;
+           newObj.direction = props.direction || 'up';
+        }
+        else if (expr.modifierType === 'scale') {
+           if (props.x !== undefined) newObj.scale.x *= props.x;
+           if (props.y !== undefined) newObj.scale.y *= props.y;
+           if (props.z !== undefined) newObj.scale.z *= props.z;
+        }
+        else if (expr.modifierType === 'translate') {
+           if (props.x !== undefined) newObj.pos.x += props.x;
+           if (props.y !== undefined) newObj.pos.y += props.y;
+           if (props.z !== undefined) newObj.pos.z += props.z;
+        }
+        else if (expr.modifierType === 'rotate') {
+           const applyRot = (ax: string, deg: number) => {
+             const rad = (deg * Math.PI) / 180;
+             if (ax === 'x') newObj.rot.x += rad;
+             if (ax === 'y') newObj.rot.y += rad;
+             if (ax === 'z') newObj.rot.z += rad;
+           };
+
+           if (Array.isArray(props.axis) && Array.isArray(props.angle)) {
+              props.axis.forEach((ax: string, i: number) => {
+                 applyRot(ax, props.angle[i]);
+              });
+           } else if (typeof props.axis === 'string' && typeof props.angle === 'number') {
+              applyRot(props.axis, props.angle);
+           }
+        }
+        
+        return newObj;
+      }
         
       case 'GroupExpr':
         return { 
@@ -154,8 +204,10 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
              return { libraryCall: expr.name, key: expr.callArgs };
         }
         
-        if (scope[expr.name]) return scope[expr.name];
-        return { ref: expr.name, unresolved: true };
+        if (scope[expr.name] !== undefined) return scope[expr.name];
+        // Handle undefined variable
+        errors.push(`Runtime Error: Variable '${expr.name}' not defined.`);
+        return null;
         
       default:
         return null;

@@ -12,7 +12,8 @@ export const SearchPane: React.FC<Props> = ({ files, onOpenFile }) => {
     if (!query) return [];
     const hits: { filename: string, line: number, text: string }[] = [];
     for (const [filename, content] of Object.entries(files)) {
-      const lines = content.split('\n');
+      const strContent = content as string;
+      const lines = strContent.split('\n');
       lines.forEach((line, idx) => {
         if (line.toLowerCase().includes(query.toLowerCase())) {
           hits.push({ filename, line: idx + 1, text: line.trim() });
