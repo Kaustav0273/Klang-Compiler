@@ -3,7 +3,9 @@ import { Token, TokenType } from '../types';
 const KEYWORDS = new Set([
   'import', 'from', 'as', 
   'cube', 'material', 'modifier', 'group', 'mesh',
-  'not', 'local'
+  'not', 'local',
+  'if', 'else', 'while', 'for', 'to', 'step',
+  'int', 'float', 'string', 'bool'
 ]);
 
 export function tokenize(source: string): Token[] {
@@ -37,15 +39,25 @@ export function tokenize(source: string): Token[] {
       continue;
     }
 
-    // Symbols (Added ;)
-    if (/[{}[\]():,=.;]/.test(char)) {
+    // Two-character Operators
+    const twoChar = source.slice(cursor, cursor + 2);
+    if (['==', '!=', '>=', '<='].includes(twoChar)) {
+      tokens.push({ type: TokenType.OPERATOR, value: twoChar, line });
+      cursor += 2;
+      continue;
+    }
+
+    // Symbols / Single-char Operators
+    // Added % to the list
+    if (/[{}[\]():,=.;+\-*/><!%]/.test(char)) {
       tokens.push({ type: TokenType.SYMBOL, value: char, line });
       cursor++;
       continue;
     }
 
     // Numbers (integers and floats)
-    if (/[0-9]/.test(char) || (char === '-' && /[0-9]/.test(source[cursor + 1] || ''))) {
+    // Removed negative number check; '-' is now always a symbol handled by parser unary logic
+    if (/[0-9]/.test(char)) {
       let value = char;
       cursor++;
       while (cursor < source.length && /[0-9.]/.test(source[cursor])) {
@@ -72,7 +84,9 @@ export function tokenize(source: string): Token[] {
     // Identifiers / Keywords / Special Sources
     if (/[a-zA-Z_@]/.test(char)) {
       let value = '';
-      while (cursor < source.length && /[a-zA-Z0-9_\-@]/.test(source[cursor])) {
+      // Removed '-' from the regex loop below. 
+      // Previously /[a-zA-Z0-9_\-@]/.test(...) caused 'x-y' to be one identifier.
+      while (cursor < source.length && /[a-zA-Z0-9_@]/.test(source[cursor])) {
         value += source[cursor];
         cursor++;
       }

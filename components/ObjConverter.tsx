@@ -2,9 +2,10 @@ import React, { useState, useRef } from 'react';
 
 interface Props {
   onCreateFile: (name: string, content: string) => void;
+  theme: 'dark' | 'light';
 }
 
-export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
+export const ObjConverter: React.FC<Props> = ({ onCreateFile, theme }) => {
   const [file, setFile] = useState<File | null>(null);
   const [objName, setObjName] = useState('my_mesh');
   const [matName, setMatName] = useState('');
@@ -117,10 +118,17 @@ export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
         onCreateFile(objName, output);
      }
   };
+  
+  const borderClass = theme === 'dark' ? 'border-gray-700' : 'border-gray-300';
+  const headerClass = theme === 'dark' ? 'bg-gray-900 border-gray-800 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-600';
+  const labelColor = theme === 'dark' ? 'text-gray-500' : 'text-gray-600';
+  const inputBg = theme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-800';
+  const btnFile = theme === 'dark' ? 'bg-gray-800 border-gray-700 hover:bg-gray-700 text-gray-300' : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-700';
+  const previewBg = theme === 'dark' ? 'bg-black/50 border-gray-800 text-gray-400' : 'bg-white border-gray-300 text-gray-600';
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border-r border-gray-700 w-64">
-       <div className="p-3 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-900 border-b border-gray-800">
+    <div className={`flex flex-col h-full w-64 border-r ${borderClass}`}>
+       <div className={`p-3 text-xs font-bold uppercase tracking-wider border-b ${headerClass}`}>
         OBJ Converter
       </div>
       
@@ -128,7 +136,7 @@ export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
          
          {/* File Input */}
          <div>
-            <label className="block text-xs text-gray-500 mb-1">Source File (.obj)</label>
+            <label className={`block text-xs mb-1 ${labelColor}`}>Source File (.obj)</label>
             <input 
                type="file" 
                accept=".obj"
@@ -138,7 +146,7 @@ export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
             />
             <button 
                onClick={() => fileInputRef.current?.click()}
-               className="w-full py-2 px-3 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-xs text-gray-300 rounded flex items-center justify-center"
+               className={`w-full py-2 px-3 border text-xs rounded flex items-center justify-center ${btnFile}`}
             >
                {file ? (
                  <span className="truncate">{file.name}</span>
@@ -153,18 +161,18 @@ export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
          {/* Settings */}
          <div className="space-y-3">
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Object Name</label>
+              <label className={`block text-xs mb-1 ${labelColor}`}>Object Name</label>
               <input 
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs p-2 rounded focus:border-blue-500 outline-none"
+                className={`w-full text-xs p-2 rounded focus:border-blue-500 outline-none border ${inputBg}`}
                 value={objName}
                 onChange={e => setObjName(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Material (Optional)</label>
+              <label className={`block text-xs mb-1 ${labelColor}`}>Material (Optional)</label>
               <input 
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs p-2 rounded focus:border-blue-500 outline-none placeholder-gray-600"
+                className={`w-full text-xs p-2 rounded focus:border-blue-500 outline-none border placeholder-gray-500 ${inputBg}`}
                 placeholder="e.g. mat_stone"
                 value={matName}
                 onChange={e => setMatName(e.target.value)}
@@ -172,11 +180,11 @@ export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
             </div>
 
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Scale Multiplier</label>
+              <label className={`block text-xs mb-1 ${labelColor}`}>Scale Multiplier</label>
               <input 
                 type="number"
                 step="0.1"
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs p-2 rounded focus:border-blue-500 outline-none"
+                className={`w-full text-xs p-2 rounded focus:border-blue-500 outline-none border ${inputBg}`}
                 value={scale}
                 onChange={e => setScale(parseFloat(e.target.value))}
               />
@@ -201,16 +209,16 @@ export const ObjConverter: React.FC<Props> = ({ onCreateFile }) => {
 
          {/* Output Preview */}
          {output && (
-            <div className="space-y-2 pt-4 border-t border-gray-800">
-               <div className="text-xs text-gray-500 font-bold">Preview</div>
-               <div className="h-32 bg-black/50 p-2 rounded border border-gray-800 overflow-auto">
-                  <pre className="text-[10px] text-gray-400 font-mono whitespace-pre">{output.slice(0, 500)}...</pre>
+            <div className={`space-y-2 pt-4 border-t ${borderClass}`}>
+               <div className={`text-xs font-bold ${labelColor}`}>Preview</div>
+               <div className={`h-32 p-2 rounded border overflow-auto ${previewBg}`}>
+                  <pre className="text-[10px] font-mono whitespace-pre">{output.slice(0, 500)}...</pre>
                </div>
                
                <div className="flex space-x-2">
                   <button 
                     onClick={copyToClipboard}
-                    className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 text-xs text-gray-200 rounded"
+                    className="flex-1 py-1 bg-gray-600 hover:bg-gray-500 text-xs text-gray-200 rounded"
                   >
                     Copy
                   </button>

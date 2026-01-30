@@ -5,6 +5,9 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 interface Props {
   data: Record<string, any>;
+  theme: 'dark' | 'light';
+  gridSize: number;
+  viewDistance: number;
 }
 
 // Generate a procedural noise texture for the "rocky" look
@@ -40,9 +43,11 @@ const createNoiseTexture = () => {
   return texture;
 };
 
-export const Renderer: React.FC<Props> = ({ data }) => {
+export const Renderer: React.FC<Props> = ({ data, theme, gridSize, viewDistance }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
   const noiseTex = useRef<THREE.Texture | null>(null);
 
   useEffect(() => {
@@ -51,6 +56,7 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     }
   }, []);
 
+  // Initialize Scene
   useEffect(() => {
     if (!mountRef.current) return;
 
@@ -59,13 +65,12 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     const height = mountRef.current.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#111827'); 
-    scene.fog = new THREE.Fog('#111827', 10, 50);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, viewDistance);
     camera.position.set(10, 10, 10);
     camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
@@ -83,8 +88,9 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     controls.enableDamping = true;
 
     // Grid
-    const gridHelper = new THREE.GridHelper(50, 50, 0x444444, 0x222222);
+    const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x444444, 0x222222);
     scene.add(gridHelper);
+    gridRef.current = gridHelper;
 
     const axesHelper = new THREE.AxesHelper(2);
     scene.add(axesHelper);
@@ -101,8 +107,68 @@ export const Renderer: React.FC<Props> = ({ data }) => {
     dirLight.shadow.mapSize.height = 2048;
     scene.add(dirLight);
 
-    // --- Helpers ---
+    let frameId: number;
+    const animate = () => {
+      frameId = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
 
+    const handleResize = () => {
+       if (!mountRef.current) return;
+       const w = mountRef.current.clientWidth;
+       const h = mountRef.current.clientHeight;
+       if (w === 0 || h === 0) return;
+
+       camera.aspect = w / h;
+       camera.updateProjectionMatrix();
+       renderer.setSize(w, h);
+    };
+
+    const resizeObserver = new ResizeObserver(() => handleResize());
+    resizeObserver.observe(mountRef.current);
+    
+    handleResize();
+
+    return () => {
+      resizeObserver.disconnect();
+      cancelAnimationFrame(frameId);
+      pmremGenerator.dispose();
+      if (mountRef.current) {
+        mountRef.current.removeChild(renderer.domElement);
+      }
+    };
+  }, []); // Only run once on mount
+
+  // Update Environment Settings
+  useEffect(() => {
+      if (!sceneRef.current || !cameraRef.current) return;
+
+      const bgColor = theme === 'light' ? '#f3f4f6' : '#111827';
+      sceneRef.current.background = new THREE.Color(bgColor);
+      sceneRef.current.fog = new THREE.Fog(bgColor, 10, viewDistance);
+      cameraRef.current.far = viewDistance;
+      cameraRef.current.updateProjectionMatrix();
+
+      // Update Grid
+      if (gridRef.current) {
+          sceneRef.current.remove(gridRef.current);
+          // Keep grid color constant (Dark Mode style) regardless of theme
+          const gridColor1 = 0x444444; 
+          const gridColor2 = 0x222222;
+          const newGrid = new THREE.GridHelper(gridSize, gridSize, gridColor1, gridColor2);
+          sceneRef.current.add(newGrid);
+          gridRef.current = newGrid;
+      }
+  }, [theme, gridSize, viewDistance]);
+
+  // Update Scene Data
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    // --- Helpers ---
     const createThreeMaterial = (matData: any, defaultColor = 0xcccccc) => {
       let color = defaultColor;
       let roughness = 0.5;
@@ -138,7 +204,6 @@ export const Renderer: React.FC<Props> = ({ data }) => {
           if (obj.direction === 'down') geom.rotateX(Math.PI);
           else if (obj.direction === 'x') geom.rotateZ(-Math.PI/2);
           else if (obj.direction === 'z') geom.rotateX(Math.PI/2);
-          // Default up (y) requires no rotation
 
           const mat = createThreeMaterial(obj.material || obj.props);
           return { geometry: geom, materials: [mat] };
@@ -239,7 +304,16 @@ export const Renderer: React.FC<Props> = ({ data }) => {
        return { geometry: new THREE.BoxGeometry(1,1,1), materials: [createThreeMaterial(null)] };
     };
 
-    // --- Build Scene ---
+    // Remove old user objects (keep grid, lights)
+    // We assume objects with user IDs are the ones to remove or update.
+    // For simplicity in this playground, we clear non-helpers and rebuild.
+    for( let i = scene.children.length - 1; i >= 0; i--) { 
+        const obj = scene.children[i];
+        if (obj.userData && obj.userData.id) {
+            scene.remove(obj);
+        }
+    }
+
     const objectMap = new Map<string, THREE.Object3D>();
 
     // 1. Create all objects
@@ -275,39 +349,7 @@ export const Renderer: React.FC<Props> = ({ data }) => {
       }
     });
 
-    let frameId: number;
-    const animate = () => {
-      frameId = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    const handleResize = () => {
-       if (!mountRef.current) return;
-       const w = mountRef.current.clientWidth;
-       const h = mountRef.current.clientHeight;
-       if (w === 0 || h === 0) return;
-
-       camera.aspect = w / h;
-       camera.updateProjectionMatrix();
-       renderer.setSize(w, h);
-    };
-
-    const resizeObserver = new ResizeObserver(() => handleResize());
-    resizeObserver.observe(mountRef.current);
-    
-    handleResize();
-
-    return () => {
-      resizeObserver.disconnect();
-      cancelAnimationFrame(frameId);
-      pmremGenerator.dispose();
-      if (mountRef.current) {
-        mountRef.current.removeChild(renderer.domElement);
-      }
-    };
   }, [data]);
 
-  return <div ref={mountRef} className="w-full h-full bg-gray-900 overflow-hidden" />;
+  return <div ref={mountRef} className="w-full h-full overflow-hidden" />;
 };

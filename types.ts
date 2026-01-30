@@ -1,9 +1,11 @@
+
 export enum TokenType {
-  KEYWORD = 'KEYWORD', // import, from, as, material, group, modifier, cube, not, mesh
+  KEYWORD = 'KEYWORD', // import, from, as, material, group, modifier, cube, not, mesh, if, else, while, for, to, step, int, float, string, bool
   IDENTIFIER = 'IDENTIFIER',
   STRING = 'STRING',
   NUMBER = 'NUMBER',
-  SYMBOL = 'SYMBOL', // { } [ ] ( ) = : , . ;
+  SYMBOL = 'SYMBOL', // { } [ ] ( ) = : , . ; + - * / > < !
+  OPERATOR = 'OPERATOR', // == != >= <=
   EOF = 'EOF'
 }
 
@@ -29,7 +31,10 @@ export type StatementNode =
   | AssignmentStatement
   | PropertyAssignmentStatement
   | MethodCallStatement
-  | ConsolePrintStatement;
+  | ConsolePrintStatement
+  | IfStatement
+  | WhileStatement
+  | ForStatement;
 
 export interface ImportStatement extends ASTNode {
   type: 'Import';
@@ -62,7 +67,36 @@ export interface MethodCallStatement extends ASTNode {
 
 export interface ConsolePrintStatement extends ASTNode {
   type: 'ConsolePrint';
-  message: string;
+  message: ExpressionNode; // changed from string to ExpressionNode to support concatenations
+}
+
+// Control Flow
+
+export interface BlockNode extends ASTNode {
+  type: 'Block';
+  statements: StatementNode[];
+}
+
+export interface IfStatement extends ASTNode {
+  type: 'If';
+  condition: ExpressionNode;
+  thenBlock: BlockNode;
+  elseBlock?: BlockNode | IfStatement;
+}
+
+export interface WhileStatement extends ASTNode {
+  type: 'While';
+  condition: ExpressionNode;
+  body: BlockNode;
+}
+
+export interface ForStatement extends ASTNode {
+  type: 'For';
+  variable: string;
+  start: ExpressionNode;
+  end: ExpressionNode;
+  step?: ExpressionNode;
+  body: BlockNode;
 }
 
 // --- Expressions ---
@@ -74,7 +108,9 @@ export type ExpressionNode =
   | ModifierExpression
   | GroupExpression
   | ReferenceExpression
-  | LiteralExpression;
+  | LiteralExpression
+  | BinaryExpression
+  | CallExpression;
 
 export interface CubeExpression extends ASTNode {
   type: 'CubeExpr';
@@ -117,6 +153,19 @@ export interface ReferenceExpression extends ASTNode {
 export interface LiteralExpression extends ASTNode {
   type: 'Literal';
   value: any;
+}
+
+export interface BinaryExpression extends ASTNode {
+  type: 'BinaryExpr';
+  left: ExpressionNode;
+  operator: string;
+  right: ExpressionNode;
+}
+
+export interface CallExpression extends ASTNode {
+  type: 'CallExpr';
+  callee: string;
+  args: ExpressionNode[];
 }
 
 // --- Runtime Types ---

@@ -3,31 +3,50 @@ import React, { useRef, useState, useEffect } from 'react';
 interface Props {
   code: string;
   onChange: (val: string) => void;
+  theme: 'dark' | 'light';
 }
 
-const highlight = (code: string) => {
-  // Escape HTML first to prevent XSS and rendering issues
+const highlight = (code: string, theme: 'dark' | 'light') => {
+  // Escape HTML first
   const escaped = code
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Single pass regex to avoid replacing inside existing HTML tags
   const regex = /(\/\/.*)|("[^"]*")|\b(import|from|as|material|cube|modifier|group|not|local|mesh)\b|\b(pos|rotate|move|scale|color|texture|roughness|vertices|faces)\b|\b(\d+(?:\.\d+)?)\b|\b([A-Z][a-zA-Z0-9_]*)\b|([{}[\\]():=,.;])/g;
 
+  // Color Maps
+  const colors = theme === 'dark' ? {
+    comment: 'text-green-500',
+    string: 'text-orange-300',
+    keyword: 'text-purple-400 font-bold',
+    property: 'text-blue-300',
+    number: 'text-green-300',
+    type: 'text-yellow-200',
+    symbol: 'text-gray-500'
+  } : {
+    comment: 'text-green-600',
+    string: 'text-orange-600',
+    keyword: 'text-purple-700 font-bold',
+    property: 'text-blue-600',
+    number: 'text-green-600',
+    type: 'text-yellow-600',
+    symbol: 'text-gray-500'
+  };
+
   return escaped.replace(regex, (match, comment, string, keyword, property, number, type, symbol) => {
-    if (comment) return `<span class="text-green-500">${comment}</span>`;
-    if (string) return `<span class="text-orange-300">${string}</span>`;
-    if (keyword) return `<span class="text-purple-400 font-bold">${keyword}</span>`;
-    if (property) return `<span class="text-blue-300">${property}</span>`;
-    if (number) return `<span class="text-green-300">${number}</span>`;
-    if (type) return `<span class="text-yellow-200">${type}</span>`;
-    if (symbol) return `<span class="text-gray-500">${symbol}</span>`;
+    if (comment) return `<span class="${colors.comment}">${comment}</span>`;
+    if (string) return `<span class="${colors.string}">${string}</span>`;
+    if (keyword) return `<span class="${colors.keyword}">${keyword}</span>`;
+    if (property) return `<span class="${colors.property}">${property}</span>`;
+    if (number) return `<span class="${colors.number}">${number}</span>`;
+    if (type) return `<span class="${colors.type}">${type}</span>`;
+    if (symbol) return `<span class="${colors.symbol}">${symbol}</span>`;
     return match;
   });
 };
 
-export const CodeEditor: React.FC<Props> = ({ code, onChange }) => {
+export const CodeEditor: React.FC<Props> = ({ code, onChange, theme }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
@@ -64,12 +83,15 @@ export const CodeEditor: React.FC<Props> = ({ code, onChange }) => {
   const lineCount = code.split('\n').length;
   const lines = Array.from({ length: lineCount }, (_, i) => i + 1);
 
+  const bgClass = theme === 'dark' ? 'bg-gray-950 text-white' : 'bg-white text-black';
+  const gutterClass = theme === 'dark' ? 'bg-gray-900 border-gray-800 text-gray-600' : 'bg-gray-100 border-gray-200 text-gray-400';
+
   return (
-    <div className="flex w-full h-full bg-gray-950 overflow-hidden">
+    <div className={`flex w-full h-full overflow-hidden ${bgClass}`}>
       {/* Line Numbers */}
       <div 
         ref={lineNumbersRef}
-        className="w-12 bg-gray-900 border-r border-gray-800 text-right pr-2 pt-4 text-gray-600 font-mono text-sm select-none overflow-hidden"
+        className={`w-12 border-r text-right pr-2 pt-4 font-mono text-sm select-none overflow-hidden ${gutterClass}`}
         style={{ fontFamily: 'monospace', lineHeight: '1.5rem' }}
       >
         {lines.map(n => (
@@ -86,13 +108,13 @@ export const CodeEditor: React.FC<Props> = ({ code, onChange }) => {
           ref={preRef}
           className="absolute inset-0 p-4 margin-0 pointer-events-none whitespace-pre overflow-hidden"
           style={{ fontFamily: 'monospace', lineHeight: '1.5rem' }}
-          dangerouslySetInnerHTML={{ __html: highlight(code) + '<br/>' }} 
+          dangerouslySetInnerHTML={{ __html: highlight(code, theme) + '<br/>' }} 
         />
         
         {/* Input Layer */}
         <textarea
           ref={textareaRef}
-          className="absolute inset-0 w-full h-full p-4 bg-transparent text-transparent caret-white outline-none resize-none whitespace-pre overflow-auto"
+          className="absolute inset-0 w-full h-full p-4 bg-transparent text-transparent caret-blue-500 outline-none resize-none whitespace-pre overflow-auto"
           style={{ fontFamily: 'monospace', lineHeight: '1.5rem' }}
           value={code}
           onChange={handleInput}
