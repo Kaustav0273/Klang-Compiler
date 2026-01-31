@@ -2,6 +2,7 @@ import { tokenize } from './lexer';
 import { parse } from './parser';
 import { interpret } from './interpreter';
 import { CompilerResult, ImportStatement } from '../types';
+import { stdLibs } from './stdlibs';
 
 // Cache for cloud libraries to avoid re-fetching constantly
 const libraryCache: Record<string, string> = {};
@@ -22,6 +23,22 @@ export async function compile(
   const imports = ast.statements.filter(s => s.type === 'Import') as ImportStatement[];
   
   for (const imp of imports) {
+    // Check built-in libraries
+    if (stdLibs[imp.source]) {
+        const lib = stdLibs[imp.source];
+        if (imp.alias) {
+           modules[imp.alias] = lib;
+        } else if (imp.items && imp.items.length > 0) {
+           imp.items.forEach(item => {
+              if (lib[item] !== undefined) modules[item] = lib[item];
+           });
+        } else {
+           // Default to source name if no alias
+           modules[imp.source] = lib;
+        }
+        continue;
+    }
+
     let modSource = "";
     
     if (imp.source.startsWith('http')) {
@@ -75,7 +92,6 @@ export async function compile(
             }
          } else {
             // Case: import x, y from lib
-            // No alias support for multiple imports in this version of KLang (as per prompt implication)
             imp.items.forEach(itemName => {
                if (modScope[itemName] !== undefined) {
                   modules[itemName] = modScope[itemName];

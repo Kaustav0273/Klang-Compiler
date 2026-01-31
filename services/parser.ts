@@ -75,6 +75,29 @@ export function parse(tokens: Token[]): ProgramNode {
       if (next.value === '=') {
         return parseAssignment();
       } else if (next.value === '(' || next.value === '.') {
+        // Lookahead to distinguish MethodCallStatement vs Expression Statement
+        // For now, if it looks like an action (method call on object), treat as statement
+        // But library calls like math.seed(1) are also statements? 
+        // In KLang, standard library calls are expressions, but can be standalone statements?
+        // Let's assume standalone expressions are valid statements if they are calls.
+        
+        // However, parseAction logic is specific to scene graph object manipulation.
+        // Let's try to parse as Action first, if it fails, maybe Expression?
+        // But parseAction expects Identifier . Identifier ...
+        // math.seed(1) fits Identifier . Identifier (
+        
+        // Wait, parseAction handles property assignment too (pos = ...).
+        // Let's rely on the grammar: Identifier = ... is assignment.
+        // Identifier.prop = ... is action (PropertyAssignment).
+        // Identifier.method(...) is action (MethodCall).
+        // math.seed(...) is structurally identical to cube.move(...).
+        
+        // We will parse it as parseAction. If the interpreter finds it's a library function, it should handle it.
+        // BUT parseAction returns StatementNode (PropertyAssignment or MethodCallStatement).
+        // Interpreter executes statements.
+        // MethodCallStatement execution: looks up object, calls method.
+        // If object is 'math', method is 'seed'.
+        
         return parseAction();
       }
     }
@@ -155,11 +178,26 @@ export function parse(tokens: Token[]): ProgramNode {
          if (srcToken.type === TokenType.STRING) {
             source = advance().value;
          } else {
-            source = expect(TokenType.IDENTIFIER).value;
+            // Allow hyphens in source identifier for klang-math
+            // But tokenize splits on hyphens unless we are careful.
+            // Lexer treats '-' as symbol. So 'klang-math' is ID SYMBOL ID.
+            // We need to handle this here or fix lexer.
+            // Let's just expect ID. If source is 'klang', and next is '-' 'math', consume it.
+            
+            let src = expect(TokenType.IDENTIFIER).value;
+            while (check(TokenType.SYMBOL, '-') || check(TokenType.IDENTIFIER)) {
+                // simple hack to combine identifiers and dashes for imports like klang-math
+                src += advance().value;
+            }
+            source = src;
          }
       } else {
          if (ids.length === 1) {
             source = ids[0];
+            // Check for dashed names here too
+            while (check(TokenType.SYMBOL, '-') || check(TokenType.IDENTIFIER)) {
+                source += advance().value;
+            }
             items = null;
          } else {
             throw new Error(`Syntax Error: Expected 'from' after import list at line ${t.line}`);
@@ -235,7 +273,6 @@ export function parse(tokens: Token[]): ProgramNode {
 
   function parseFactor(): ExpressionNode {
       let expr = parseUnary();
-      // Added % support here
       while (match(TokenType.SYMBOL, '*') || match(TokenType.SYMBOL, '/') || match(TokenType.SYMBOL, '%')) {
           const operator = tokens[current - 1].value;
           const right = parseUnary();
@@ -290,9 +327,25 @@ export function parse(tokens: Token[]): ProgramNode {
          expect(TokenType.SYMBOL, ')');
          return { type: 'CallExpr', callee: id.value, args };
        }
-       else if (check(TokenType.SYMBOL, '.') && peek(1).type === TokenType.IDENTIFIER && peek(2).type === TokenType.SYMBOL && peek(2).value === '(') {
+       else if (check(TokenType.SYMBOL, '.') && peek(1).type === TokenType.IDENTIFIER) {
            advance(); // .
            const sub = expect(TokenType.IDENTIFIER).value;
+           
+           // Check if it's a call like math.abs(5)
+           if (check(TokenType.SYMBOL, '(')) {
+               advance(); // (
+               const args: ExpressionNode[] = [];
+               if (!check(TokenType.SYMBOL, ')')) {
+                   args.push(parseExpression());
+                   while (match(TokenType.SYMBOL, ',')) {
+                       args.push(parseExpression());
+                   }
+               }
+               expect(TokenType.SYMBOL, ')');
+               return { type: 'CallExpr', callee: `${id.value}.${sub}`, args };
+           }
+           
+           // Otherwise it's a reference (e.g. constant math.pi)
            return { type: 'Reference', name: id.value, callArgs: sub };
        }
        
@@ -315,7 +368,6 @@ export function parse(tokens: Token[]): ProgramNode {
     expect(TokenType.SYMBOL, '(');
     const vertices: string[] = [];
     let buffer = "";
-    // Note: This relies on manual token processing, so '-' is just another token added to buffer
     while (peek().type !== TokenType.EOF && peek().value !== ')') {
        const t = advance();
        if (t.value === ':') {
@@ -459,10 +511,7 @@ export function parse(tokens: Token[]): ProgramNode {
       let val: any;
       const t1 = peek();
       
-      // Legacy coordinate list support for PropertyAssignment
       if ((t1.type === TokenType.NUMBER || t1.value === '-') && peek(1).value === ',') {
-         // This is a special legacy case: pos = -1, 2, 3
-         // We must handle signs manually here too if we want legacy support to work with negatives
          const coords = [];
          while (peek().type === TokenType.NUMBER || peek().value === '-' || peek().value === ',') {
            if (match(TokenType.SYMBOL, ',')) continue;

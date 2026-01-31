@@ -83,6 +83,7 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
       }
 
       case 'CallExpr': {
+         // Built-in casting
          if (expr.callee === 'int') {
             return Math.floor(evaluateExpression(expr.args[0]));
          }
@@ -95,7 +96,23 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
          if (expr.callee === 'bool') {
             return Boolean(evaluateExpression(expr.args[0]));
          }
-         // TODO: Other function calls or library calls?
+         
+         // Library Calls (e.g. math.sin)
+         if (expr.callee.includes('.')) {
+             const [libName, funcName] = expr.callee.split('.');
+             const lib = scope[libName];
+             if (lib && typeof lib[funcName] === 'function') {
+                  const argValues = expr.args.map(a => evaluateExpression(a));
+                  return lib[funcName](...argValues);
+             }
+         }
+         
+         // Direct function calls (e.g. sqrt from import)
+         if (scope[expr.callee] && typeof scope[expr.callee] === 'function') {
+             const argValues = expr.args.map(a => evaluateExpression(a));
+             return scope[expr.callee](...argValues);
+         }
+         
          return null;
       }
 
@@ -358,9 +375,19 @@ export function interpret(ast: ProgramNode, modules: Record<string, any> = {}): 
 
         case 'MethodCall': {
           const s = stmt as MethodCallStatement;
+          
+          // Check if this is a scene object method or a loose function call statement (e.g. math.seed(1))
           const obj = sceneGraph[s.objectName];
            if (!obj) {
-             errors.push(`Runtime Error: Object '${s.objectName}' not found.`);
+             // If object is not in scene graph, it might be a library call statement (e.g. math.seed(1))
+             const lib = scope[s.objectName];
+             if (lib && typeof lib[s.method] === 'function') {
+                const argValues = s.args.map(a => evaluateExpression(a));
+                lib[s.method](...argValues);
+                break;
+             }
+             
+             errors.push(`Runtime Error: Object or Library '${s.objectName}' not found.`);
              break;
           }
           
